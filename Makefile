@@ -3,18 +3,12 @@
 #
 # GNU Make required
 #
-
-COMPILE_PLATFORM=$(shell uname|sed -e s/_.*//|tr '[:upper:]' '[:lower:]'|sed -e 's/\//_/g')
-
-COMPILE_ARCH=$(shell uname -m | sed -e s/i.86/x86/ | sed -e 's/^arm.*/arm/')
+COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
+COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/' | sed -e 's/^arm.*/arm/')
 
 ifeq ($(COMPILE_PLATFORM),sunos)
   # Solaris uname and GNU uname differ
-  COMPILE_ARCH=$(shell uname -p | sed -e s/i.86/x86/)
-endif
-ifeq ($(COMPILE_PLATFORM),darwin)
-  # Apple does some things a little differently...
-  COMPILE_ARCH=$(shell uname -p | sed -e s/i.86/x86/)
+  COMPILE_ARCH=$(shell uname -p | sed -e 's/i.86/x86/')
 endif
 
 ifndef BUILD_STANDALONE
@@ -230,8 +224,12 @@ ifndef USE_RENDERER_DLOPEN
 USE_RENDERER_DLOPEN=1
 endif
 
+ifndef USE_YACC
+USE_YACC=0
+endif
+
 ifndef DEBUG_CFLAGS
-DEBUG_CFLAGS=-g -O0
+DEBUG_CFLAGS=-ggdb -O0
 endif
 
 #############################################################################
@@ -408,8 +406,7 @@ ifeq ($(PLATFORM),darwin)
   RENDERER_LIBS=
   OPTIMIZEVM=
 
-  BASE_CFLAGS = -Wall -Wimplicit -Wstrict-prototypes -mmacosx-version-min=10.5 \
-    -DMAC_OS_X_VERSION_MIN_REQUIRED=1050
+  BASE_CFLAGS += -mmacosx-version-min=10.7 -DMAC_OS_X_VERSION_MIN_REQUIRED=1070
 
   ifeq ($(ARCH),ppc)
     BASE_CFLAGS += -arch ppc -faltivec
@@ -447,11 +444,9 @@ ifeq ($(PLATFORM),darwin)
         $(error Architecture $(ARCH) is not supported when cross compiling)
       endif
     endif
-  else
-    TOOLS_CFLAGS += -DMACOS_X
   endif
 
-  BASE_CFLAGS += -fno-strict-aliasing -DMACOS_X -fno-common -pipe
+  BASE_CFLAGS += -fno-strict-aliasing -fno-common -pipe
 
   ifeq ($(USE_OPENAL),1)
     ifneq ($(USE_OPENAL_DLOPEN),1)
@@ -468,6 +463,9 @@ ifeq ($(PLATFORM),darwin)
 
   BASE_CFLAGS += -D_THREAD_SAFE=1
 
+  # FIXME: It is not possible to build using system SDL2 framework
+  #  1. IF you try, this Makefile will still drop libSDL-2.0.0.dylib into the builddir
+  #  2. Debugger warns that you have 2- which one will be used is undefined
   ifeq ($(USE_LOCAL_HEADERS),1)
     BASE_CFLAGS += -I$(SDLHDIR)/include
   endif
@@ -507,10 +505,10 @@ ifdef MINGW
 
     # We need to figure out the correct gcc and windres
     ifeq ($(ARCH),x86_64)
-      MINGW_PREFIXES=amd64-mingw32msvc x86_64-w64-mingw32
+      MINGW_PREFIXES=x86_64-w64-mingw32 amd64-mingw32msvc
     endif
     ifeq ($(ARCH),x86)
-      MINGW_PREFIXES=i586-mingw32msvc i686-w64-mingw32 i686-pc-mingw32
+      MINGW_PREFIXES=i686-w64-mingw32 i586-mingw32msvc i686-pc-mingw32
     endif
 
     ifndef CC
@@ -1100,6 +1098,11 @@ else
   STRIP_FLAG = -s
 endif
 
+# https://reproducible-builds.org/specs/source-date-epoch/
+ifdef SOURCE_DATE_EPOCH
+  BASE_CFLAGS += -DPRODUCT_DATE=\\\"$(shell date --date="@$$SOURCE_DATE_EPOCH" "+%b %_d %Y" | sed -e 's/ /\\\ /'g)\\\"
+endif
+
 BASE_CFLAGS += -DPRODUCT_VERSION=\\\"$(VERSION)\\\"
 BASE_CFLAGS += -Wformat=2 -Wno-format-zero-length -Wformat-security -Wno-format-nonliteral
 BASE_CFLAGS += -Wstrict-aliasing=2 -Wmissing-format-attribute
@@ -1357,6 +1360,10 @@ ifndef TOOLS_CC
   TOOLS_CC = gcc
 endif
 
+ifndef YACC
+  YACC = yacc
+endif
+
 TOOLS_OPTIMIZE = -g -Wall -fno-strict-aliasing
 TOOLS_CFLAGS += $(TOOLS_OPTIMIZE) \
                 -DTEMPDIR=\"$(TEMPDIR)\" -DSYSTEM=\"\" \
@@ -1368,6 +1375,12 @@ TOOLS_LDFLAGS =
 ifeq ($(GENERATE_DEPENDENCIES),1)
   TOOLS_CFLAGS += -MMD
 endif
+
+define DO_YACC
+$(echo_cmd) "YACC $<"
+$(Q)$(YACC) $<
+$(Q)mv -f y.tab.c $@
+endef
 
 define DO_TOOLS_CC
 $(echo_cmd) "TOOLS_CC $<"
@@ -1389,6 +1402,12 @@ Q3ASM       = $(B)/tools/q3asm$(TOOLS_BINEXT)
 LBURGOBJ= \
   $(B)/tools/lburg/lburg.o \
   $(B)/tools/lburg/gram.o
+
+# override GNU Make built-in rule for converting gram.y to gram.c
+%.c: %.y
+ifeq ($(USE_YACC),1)
+	$(DO_YACC)
+endif
 
 $(B)/tools/lburg/%.o: $(LBURGDIR)/%.c
 	$(DO_TOOLS_CC)
@@ -2052,7 +2071,7 @@ endif
 ifneq ($(USE_RENDERER_DLOPEN),0)
 $(B)/$(CLIENTBIN)$(FULLBINEXT): $(Q3OBJ) $(LIBSDLMAIN)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) \
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) $(NOTSHLIBLDFLAGS) \
 		-o $@ $(Q3OBJ) \
 		$(LIBSDLMAIN) $(CLIENT_LIBS) $(LIBS)
 
@@ -2068,13 +2087,13 @@ $(B)/renderer_opengl2_$(SHLIBNAME): $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ)
 else
 $(B)/$(CLIENTBIN)$(FULLBINEXT): $(Q3OBJ) $(Q3ROBJ) $(JPGOBJ) $(LIBSDLMAIN)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) \
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) $(NOTSHLIBLDFLAGS) \
 		-o $@ $(Q3OBJ) $(Q3ROBJ) $(JPGOBJ) \
 		$(LIBSDLMAIN) $(CLIENT_LIBS) $(RENDERER_LIBS) $(LIBS)
 
 $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT): $(Q3OBJ) $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) $(LIBSDLMAIN)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) \
+	$(Q)$(CC) $(CLIENT_CFLAGS) $(CFLAGS) $(CLIENT_LDFLAGS) $(LDFLAGS) $(NOTSHLIBLDFLAGS) \
 		-o $@ $(Q3OBJ) $(Q3R2OBJ) $(Q3R2STRINGOBJ) $(JPGOBJ) \
 		$(LIBSDLMAIN) $(CLIENT_LIBS) $(RENDERER_LIBS) $(LIBS)
 endif
@@ -2216,7 +2235,7 @@ endif
 
 $(B)/$(SERVERBIN)$(FULLBINEXT): $(Q3DOBJ)
 	$(echo_cmd) "LD $@"
-	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(Q3DOBJ) $(LIBS)
+	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) $(NOTSHLIBLDFLAGS) -o $@ $(Q3DOBJ) $(LIBS)
 
 
 

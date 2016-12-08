@@ -55,9 +55,6 @@ typedef unsigned int glIndex_t;
 #define MAX_DRAWN_PSHADOWS    16 // do not increase past 32, because bit flags are used on surfaces
 #define PSHADOW_MAP_SIZE      512
 
-#define USE_VERT_TANGENT_SPACE
-#define USE_OVERBRIGHT
-
 typedef struct cubemap_s {
 	char name[MAX_QPATH];
 	vec3_t origin;
@@ -706,9 +703,9 @@ typedef struct shaderProgram_s
 {
 	char            name[MAX_QPATH];
 
-	GLhandleARB     program;
-	GLhandleARB     vertexShader;
-	GLhandleARB     fragmentShader;
+	GLuint          program;
+	GLuint          vertexShader;
+	GLuint          fragmentShader;
 	uint32_t        attribs;	// vertex array attributes
 
 	// uniform parameters
@@ -761,7 +758,6 @@ typedef struct {
 	float       sunDir[4];
 	float       sunCol[4];
 	float       sunAmbCol[4];
-	float       colorScale;
 
 	float       autoExposureMinMax[2];
 	float       toneMinAvgMaxLinear[3];
@@ -895,23 +891,17 @@ typedef struct
 	vec3_t          xyz;
 	vec2_t          st;
 	vec2_t          lightmap;
-	vec3_t          normal;
-#ifdef USE_VERT_TANGENT_SPACE
-	vec4_t          tangent;
-#endif
-	vec3_t          lightdir;
-	vec4_t			vertexColors;
+	int16_t         normal[4];
+	int16_t         tangent[4];
+	int16_t         lightdir[4];
+	uint16_t        color[4];
 
 #if DEBUG_OPTIMIZEVERTICES
 	unsigned int    id;
 #endif
 } srfVert_t;
 
-#ifdef USE_VERT_TANGENT_SPACE
-#define srfVert_t_cleared(x) srfVert_t (x) = {{0, 0, 0}, {0, 0}, {0, 0}, {0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0}, {0, 0, 0, 0}}
-#else
-#define srfVert_t_cleared(x) srfVert_t (x) = {{0, 0, 0}, {0, 0}, {0, 0}, {0, 0, 0}, {0, 0, 0},  {0, 0, 0, 0}}
-#endif
+#define srfVert_t_cleared(x) srfVert_t (x) = {{0, 0, 0}, {0, 0}, {0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}
 
 // srfBspSurface_t covers SF_GRID, SF_TRIANGLES, SF_POLY, and SF_VAO_MESH
 typedef struct srfBspSurface_s
@@ -1163,7 +1153,7 @@ typedef struct {
 	vec3_t		lightGridInverseSize;
 	int			lightGridBounds[3];
 	byte		*lightGridData;
-	float		*hdrLightGrid;
+	uint16_t	*lightGrid16;
 
 
 	int			numClusters;
@@ -1201,11 +1191,8 @@ typedef struct
 typedef struct
 {
 	vec3_t          xyz;
-	vec3_t          normal;
-#ifdef USE_VERT_TANGENT_SPACE
-	vec3_t          tangent;
-	vec3_t          bitangent;
-#endif
+	int16_t         normal[4];
+	int16_t         tangent[4];
 } mdvVertex_t;
 
 typedef struct
@@ -1383,6 +1370,9 @@ typedef enum {
 // We can't change glConfig_t without breaking DLL/vms compatibility, so
 // store extensions we have here.
 typedef struct {
+	int openglMajorVersion;
+	int openglMinorVersion;
+
 	qboolean    drawRangeElements;
 	qboolean    multiDrawArrays;
 	qboolean	occlusionQuery;
@@ -1396,11 +1386,7 @@ typedef struct {
 	int maxRenderbufferSize;
 	int maxColorAttachments;
 
-	qboolean textureNonPowerOfTwo;
 	qboolean textureFloat;
-	qboolean halfFloatPixel;
-	qboolean packedDepthStencil;
-	qboolean arbTextureCompression;
 	textureCompressionRef_t textureCompression;
 	qboolean swizzleNormalmap;
 	
@@ -1410,13 +1396,6 @@ typedef struct {
 	qboolean depthClamp;
 	qboolean seamlessCubeMap;
 
-	GLenum packedNormalDataType;
-	GLenum packedTexcoordDataType;
-	GLenum packedColorDataType;
-	int packedTexcoordDataSize;
-	int packedColorDataSize;
-
-	qboolean floatLightmap;
 	qboolean vertexArrayObject;
 	qboolean directStateAccess;
 } glRefConfig_t;
@@ -1563,8 +1542,8 @@ typedef struct {
 	image_t					**lightmaps;
 	image_t					**deluxemaps;
 
-	int                     fatLightmapSize;
-	int		                fatLightmapStep;
+	int						fatLightmapCols;
+	int						fatLightmapRows;
 
 	int                     numCubemaps;
 	cubemap_t               *cubemaps;
@@ -1609,7 +1588,6 @@ typedef struct {
 
 	int						viewCluster;
 
-	float                   mapLightScale;
 	float                   sunShadowScale;
 
 	qboolean                sunShadows;
@@ -1713,11 +1691,8 @@ extern  cvar_t  *r_ext_draw_range_elements;
 extern  cvar_t  *r_ext_multi_draw_arrays;
 extern  cvar_t  *r_ext_framebuffer_object;
 extern  cvar_t  *r_ext_texture_float;
-extern  cvar_t  *r_arb_half_float_pixel;
-extern  cvar_t  *r_arb_half_float_vertex;
 extern  cvar_t  *r_ext_framebuffer_multisample;
 extern  cvar_t  *r_arb_seamless_cube_map;
-extern  cvar_t  *r_arb_vertex_type_2_10_10_10_rev;
 extern  cvar_t  *r_arb_vertex_array_object;
 extern  cvar_t  *r_ext_direct_state_access;
 
@@ -1803,7 +1778,6 @@ extern  cvar_t  *r_imageUpsampleMaxSize;
 extern  cvar_t  *r_imageUpsampleType;
 extern  cvar_t  *r_genNormalMaps;
 extern  cvar_t  *r_forceSun;
-extern  cvar_t  *r_forceSunMapLightScale;
 extern  cvar_t  *r_forceSunLightScale;
 extern  cvar_t  *r_forceSunAmbientScale;
 extern  cvar_t  *r_sunlightMode;
@@ -1860,7 +1834,7 @@ void R_AddDrawSurf( surfaceType_t *surface, shader_t *shader,
 
 void R_CalcTexDirs(vec3_t sdir, vec3_t tdir, const vec3_t v1, const vec3_t v2,
 				   const vec3_t v3, const vec2_t w1, const vec2_t w2, const vec2_t w3);
-void R_CalcTbnFromNormalAndTexDirs(vec3_t tangent, vec3_t bitangent, vec3_t normal, vec3_t sdir, vec3_t tdir);
+vec_t R_CalcTangentSpace(vec3_t tangent, vec3_t bitangent, const vec3_t normal, const vec3_t sdir, const vec3_t tdir);
 qboolean R_CalcTangentVectors(srfVert_t * dv[3]);
 
 #define	CULL_IN		0		// completely unclipped
@@ -1943,7 +1917,7 @@ qboolean	R_GetEntityToken( char *buffer, int size );
 model_t		*R_AllocModel( void );
 
 void    	R_Init( void );
-void		R_UpdateSubImage( image_t *image, byte *pic, int x, int y, int width, int height );
+void		R_UpdateSubImage( image_t *image, byte *pic, int x, int y, int width, int height, GLenum picFormat );
 
 void		R_SetColorMappings( void );
 void		R_GammaCorrect( byte *buffer, int bufSize );
@@ -2007,13 +1981,12 @@ typedef struct shaderCommands_s
 {
 	glIndex_t	indexes[SHADER_MAX_INDEXES] QALIGN(16);
 	vec4_t		xyz[SHADER_MAX_VERTEXES] QALIGN(16);
-	uint32_t	normal[SHADER_MAX_VERTEXES] QALIGN(16);
-#ifdef USE_VERT_TANGENT_SPACE
-	uint32_t	tangent[SHADER_MAX_VERTEXES] QALIGN(16);
-#endif
-	vec2_t		texCoords[SHADER_MAX_VERTEXES][2] QALIGN(16);
-	vec4_t		vertexColors[SHADER_MAX_VERTEXES] QALIGN(16);
-	uint32_t    lightdir[SHADER_MAX_VERTEXES] QALIGN(16);
+	int16_t		normal[SHADER_MAX_VERTEXES][4] QALIGN(16);
+	int16_t		tangent[SHADER_MAX_VERTEXES][4] QALIGN(16);
+	vec2_t		texCoords[SHADER_MAX_VERTEXES] QALIGN(16);
+	vec2_t		lightCoords[SHADER_MAX_VERTEXES] QALIGN(16);
+	uint16_t	color[SHADER_MAX_VERTEXES][4] QALIGN(16);
+	int16_t		lightdir[SHADER_MAX_VERTEXES][4] QALIGN(16);
 	//int			vertexDlightBits[SHADER_MAX_VERTEXES] QALIGN(16);
 
 	void *attribPointers[ATTR_INDEX_COUNT];
@@ -2151,11 +2124,10 @@ CURVE TESSELATION
 
 #define PATCH_STITCHING
 
-srfBspSurface_t *R_SubdividePatchToGrid( int width, int height,
+void R_SubdividePatchToGrid( srfBspSurface_t *grid, int width, int height,
 								srfVert_t points[MAX_PATCH_SIZE*MAX_PATCH_SIZE] );
-srfBspSurface_t *R_GridInsertColumn( srfBspSurface_t *grid, int column, int row, vec3_t point, float loderror );
-srfBspSurface_t *R_GridInsertRow( srfBspSurface_t *grid, int row, int column, vec3_t point, float loderror );
-void R_FreeSurfaceGridMesh( srfBspSurface_t *grid );
+void R_GridInsertColumn( srfBspSurface_t *grid, int column, int row, vec3_t point, float loderror );
+void R_GridInsertRow( srfBspSurface_t *grid, int row, int column, vec3_t point, float loderror );
 
 /*
 ============================================================
@@ -2177,12 +2149,11 @@ VERTEX BUFFER OBJECTS
 ============================================================
 */
 
-int R_VaoPackTangent(byte *out, vec4_t v);
-int R_VaoPackNormal(byte *out, vec3_t v);
-int R_VaoPackTexCoord(byte *out, vec2_t st);
-int R_VaoPackColors(byte *out, vec4_t color);
-void R_VaoUnpackTangent(vec4_t v, uint32_t b);
-void R_VaoUnpackNormal(vec3_t v, uint32_t b);
+void R_VaoPackTangent(int16_t *out, vec4_t v);
+void R_VaoPackNormal(int16_t *out, vec3_t v);
+void R_VaoPackColor(uint16_t *out, vec4_t c);
+void R_VaoUnpackTangent(vec4_t v, int16_t *pack);
+void R_VaoUnpackNormal(vec3_t v, int16_t *pack);
 
 vao_t          *R_CreateVao(const char *name, byte *vertexes, int vertexesSize, byte *indexes, int indexesSize, vaoUsage_t usage);
 vao_t          *R_CreateVao2(const char *name, int numVertexes, srfVert_t *verts, int numIndexes, glIndex_t *inIndexes);

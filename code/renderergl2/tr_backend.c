@@ -644,7 +644,7 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	}
 
 	if (inQuery) {
-		qglEndQueryARB(GL_SAMPLES_PASSED_ARB);
+		qglEndQuery(GL_SAMPLES_PASSED);
 	}
 
 	if (glRefConfig.framebufferObject)
@@ -712,9 +712,6 @@ void	RB_SetGL2D (void) {
 	// set time for 2D shaders
 	backEnd.refdef.time = ri.Milliseconds();
 	backEnd.refdef.floatTime = backEnd.refdef.time * 0.001f;
-
-	// reset color scaling
-	backEnd.refdef.colorScale = 1.0f;
 }
 
 
@@ -808,16 +805,16 @@ void RE_UploadCinematic (int w, int h, int cols, int rows, const byte *data, int
 	if ( cols != tr.scratchImage[client]->width || rows != tr.scratchImage[client]->height ) {
 		tr.scratchImage[client]->width = tr.scratchImage[client]->uploadWidth = cols;
 		tr.scratchImage[client]->height = tr.scratchImage[client]->uploadHeight = rows;
-		qglTextureImage2D(texture, GL_TEXTURE_2D, 0, GL_RGB8, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		qglTextureParameterf(texture, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		qglTextureParameterf(texture, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		qglTextureParameterf(texture, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		qglTextureParameterf(texture, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		qglTextureImage2DEXT(texture, GL_TEXTURE_2D, 0, GL_RGB8, cols, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+		qglTextureParameterfEXT(texture, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		qglTextureParameterfEXT(texture, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		qglTextureParameterfEXT(texture, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		qglTextureParameterfEXT(texture, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	} else {
 		if (dirty) {
 			// otherwise, just subimage upload it so that drivers can tell we are going to be changing
 			// it and don't try and do a texture compression
-			qglTextureSubImage2D(texture, GL_TEXTURE_2D, 0, 0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, data);
+			qglTextureSubImage2DEXT(texture, GL_TEXTURE_2D, 0, 0, 0, cols, rows, GL_RGBA, GL_UNSIGNED_BYTE, data);
 		}
 	}
 }
@@ -884,43 +881,43 @@ const void *RB_StretchPic ( const void *data ) {
 	tess.indexes[ numIndexes + 5 ] = numVerts + 1;
 
 	{
-		vec4_t color;
+		uint16_t color[4];
 
-		VectorScale4(backEnd.color2D, 1.0f / 255.0f, color);
+		VectorScale4(backEnd.color2D, 257, color);
 
-		VectorCopy4(color, tess.vertexColors[ numVerts ]);
-		VectorCopy4(color, tess.vertexColors[ numVerts + 1]);
-		VectorCopy4(color, tess.vertexColors[ numVerts + 2]);
-		VectorCopy4(color, tess.vertexColors[ numVerts + 3 ]);
+		VectorCopy4(color, tess.color[ numVerts ]);
+		VectorCopy4(color, tess.color[ numVerts + 1]);
+		VectorCopy4(color, tess.color[ numVerts + 2]);
+		VectorCopy4(color, tess.color[ numVerts + 3 ]);
 	}
 
 	tess.xyz[ numVerts ][0] = cmd->x;
 	tess.xyz[ numVerts ][1] = cmd->y;
 	tess.xyz[ numVerts ][2] = 0;
 
-	tess.texCoords[ numVerts ][0][0] = cmd->s1;
-	tess.texCoords[ numVerts ][0][1] = cmd->t1;
+	tess.texCoords[ numVerts ][0] = cmd->s1;
+	tess.texCoords[ numVerts ][1] = cmd->t1;
 
 	tess.xyz[ numVerts + 1 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 1 ][1] = cmd->y;
 	tess.xyz[ numVerts + 1 ][2] = 0;
 
-	tess.texCoords[ numVerts + 1 ][0][0] = cmd->s2;
-	tess.texCoords[ numVerts + 1 ][0][1] = cmd->t1;
+	tess.texCoords[ numVerts + 1 ][0] = cmd->s2;
+	tess.texCoords[ numVerts + 1 ][1] = cmd->t1;
 
 	tess.xyz[ numVerts + 2 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 2 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 2 ][2] = 0;
 
-	tess.texCoords[ numVerts + 2 ][0][0] = cmd->s2;
-	tess.texCoords[ numVerts + 2 ][0][1] = cmd->t2;
+	tess.texCoords[ numVerts + 2 ][0] = cmd->s2;
+	tess.texCoords[ numVerts + 2 ][1] = cmd->t2;
 
 	tess.xyz[ numVerts + 3 ][0] = cmd->x;
 	tess.xyz[ numVerts + 3 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 3 ][2] = 0;
 
-	tess.texCoords[ numVerts + 3 ][0][0] = cmd->s1;
-	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
+	tess.texCoords[ numVerts + 3 ][0] = cmd->s1;
+	tess.texCoords[ numVerts + 3 ][1] = cmd->t2;
 
 	return (const void *)(cmd + 1);
 }
@@ -974,7 +971,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 		else if (tr.renderFbo == NULL && tr.renderDepthImage)
 		{
 			// If we're rendering directly to the screen, copy the depth to a texture
-			qglCopyTextureImage2D(tr.renderDepthImage->texnum, GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, 0, 0, glConfig.vidWidth, glConfig.vidHeight, 0);
+			qglCopyTextureImage2DEXT(tr.renderDepthImage->texnum, GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, 0, 0, glConfig.vidWidth, glConfig.vidHeight, 0);
 		}
 
 		if (tr.hdrDepthFbo)
@@ -1184,7 +1181,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 			RB_DrawSun(0.1, tr.sunShader);
 		}
 
-		if (r_drawSunRays->integer)
+		if (glRefConfig.framebufferObject && r_drawSunRays->integer)
 		{
 			FBO_t *oldFbo = glState.currentFBO;
 			FBO_Bind(tr.sunRaysFbo);
@@ -1195,14 +1192,14 @@ const void	*RB_DrawSurfs( const void *data ) {
 			if (glRefConfig.occlusionQuery)
 			{
 				tr.sunFlareQueryActive[tr.sunFlareQueryIndex] = qtrue;
-				qglBeginQueryARB(GL_SAMPLES_PASSED_ARB, tr.sunFlareQuery[tr.sunFlareQueryIndex]);
+				qglBeginQuery(GL_SAMPLES_PASSED, tr.sunFlareQuery[tr.sunFlareQueryIndex]);
 			}
 
 			RB_DrawSun(0.3, tr.sunFlareShader);
 
 			if (glRefConfig.occlusionQuery)
 			{
-				qglEndQueryARB(GL_SAMPLES_PASSED_ARB);
+				qglEndQuery(GL_SAMPLES_PASSED);
 			}
 
 			FBO_Bind(oldFbo);
@@ -1221,7 +1218,7 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 		FBO_Bind(NULL);
 		if (cubemap && cubemap->image)
-			qglGenerateTextureMipmap(cubemap->image->texnum, GL_TEXTURE_CUBE_MAP);
+			qglGenerateTextureMipmapEXT(cubemap->image->texnum, GL_TEXTURE_CUBE_MAP);
 	}
 
 	return (const void *)(cmd + 1);
@@ -1478,14 +1475,14 @@ const void *RB_CapShadowMap(const void *data)
 		{
 			if (tr.shadowCubemaps[cmd->map])
 			{
-				qglCopyTextureImage2D(tr.shadowCubemaps[cmd->map]->texnum, GL_TEXTURE_CUBE_MAP_POSITIVE_X + cmd->cubeSide, 0, GL_RGBA8, backEnd.refdef.x, glConfig.vidHeight - ( backEnd.refdef.y + PSHADOW_MAP_SIZE ), PSHADOW_MAP_SIZE, PSHADOW_MAP_SIZE, 0);
+				qglCopyTextureImage2DEXT(tr.shadowCubemaps[cmd->map]->texnum, GL_TEXTURE_CUBE_MAP_POSITIVE_X + cmd->cubeSide, 0, GL_RGBA8, backEnd.refdef.x, glConfig.vidHeight - ( backEnd.refdef.y + PSHADOW_MAP_SIZE ), PSHADOW_MAP_SIZE, PSHADOW_MAP_SIZE, 0);
 			}
 		}
 		else
 		{
 			if (tr.pshadowMaps[cmd->map])
 			{
-				qglCopyTextureImage2D(tr.pshadowMaps[cmd->map]->texnum, GL_TEXTURE_2D, 0, GL_RGBA8, backEnd.refdef.x, glConfig.vidHeight - (backEnd.refdef.y + PSHADOW_MAP_SIZE), PSHADOW_MAP_SIZE, PSHADOW_MAP_SIZE, 0);
+				qglCopyTextureImage2DEXT(tr.pshadowMaps[cmd->map]->texnum, GL_TEXTURE_2D, 0, GL_RGBA8, backEnd.refdef.x, glConfig.vidHeight - (backEnd.refdef.y + PSHADOW_MAP_SIZE), PSHADOW_MAP_SIZE, PSHADOW_MAP_SIZE, 0);
 			}
 		}
 	}

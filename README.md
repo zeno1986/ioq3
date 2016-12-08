@@ -36,10 +36,14 @@ use a modern copy from http://icculus.org/gtkradiant/.
 
 The original id software readme that accompanied the Q3 source release has been
 renamed to id-readme.txt so as to prevent confusion. Please refer to the
-web-site for updated status.
+website for updated status.
 
-More documentation is on:
+More documentation including a Player's Guide and Sysadmin Guide is on:
 http://wiki.ioquake3.org/
+
+If you've got issues that you aren't sure are worth filing as bugs, or just
+want to chat, please visit our forums:
+http://discourse.ioquake.org
 
 # Compilation and installation
 
@@ -89,6 +93,7 @@ Makefile.local:
   SERVERBIN            - rename 'ioq3ded' server binary
   CLIENTBIN            - rename 'ioquake3' client binary
   USE_RENDERER_DLOPEN  - build and use the renderer in a library
+  USE_YACC             - use yacc to update code/tools/lcc/lburg/gram.c
   BASEGAME             - rename 'baseq3'
   BASEGAME_CFLAGS      - custom CFLAGS for basegame
   MISSIONPACK          - rename 'missionpack'
@@ -244,7 +249,7 @@ The defaults for these variables differ depending on the target platform.
                                       ipv6 servers on the local network
   net_mcastiface                    - outgoing interface to use for scan
 
-  r_allowResize                     - make window resizable (SDL only)
+  r_allowResize                     - make window resizable
   r_ext_texture_filter_anisotropic  - anisotropic texture filtering
   r_zProj                           - distance of observer camera to projection
                                       plane in quake3 standard units
@@ -480,6 +485,7 @@ The focus for ioq3 is to develop a stable base suitable for further development
 and provide players with the same Quake 3 experience they've had for years.
 
 We do have graphical improvements with the new renderer, but they are off by default.
+See opengl2-readme.md for more information.
 
 # Building Official Installers
 
@@ -502,12 +508,10 @@ but we have some general guidelines:
     providing pak0.pk3 and the patch pk3s are not referred to or included in the
     installer.
 
-  * Please include at least an SDL so/dylib/dll on every platform.
+  * Please include at least a libSDL2 so/dylib/dll on every platform.
 
   * Please include an OpenAL so/dylib/dll, since every platform should be using
     it by now.
-
-  * Please contact the mailing list when you've made your installer.
 
   * Please be prepared to alter your installer on the whim of the maintainers.
 
